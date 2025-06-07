@@ -32,16 +32,18 @@ export class ImapClientManager {
       });
 
       client.on('error', (err) => {
-        logger.error(`IMAP error for ${cfg.user}: ${err}`);
+        const msg = err instanceof Error ? err.message : String(err);
+        logger.error(`IMAP error for ${cfg.user}: ${msg}`);
       });
 
-      await client.connect();
-      await client.mailboxOpen('INBOX');
-
-      const sinceDate = new Date();
-      sinceDate.setDate(sinceDate.getDate() - 30);
-
       try {
+        await client.connect();
+        await client.mailboxOpen('INBOX');
+
+        const sinceDate = new Date();
+        sinceDate.setDate(sinceDate.getDate() - 30);
+
+        // Initial fetch for emails since last 30 days
         for await (const msg of client.fetch(
           { since: sinceDate.toISOString() },
           { envelope: true, source: true }
@@ -50,27 +52,30 @@ export class ImapClientManager {
             await this.processRawMessage(msg.source, cfg.user);
           }
         }
-      } catch (err) {
-        logger.error(`Initial fetch failed for ${cfg.user}: ${err}`);
-      }
 
-      client.on('new', async () => {
-        try {
-          for await (const msg of client.fetch('1:*', {
-            envelope: true,
-            source: true,
-          })) {
-            if (msg.source) {
-              await this.processRawMessage(msg.source, cfg.user);
+        // Listen for new emails arriving after connection
+        client.on('new', async () => {
+          try {
+            for await (const msg of client.fetch('1:*', {
+              envelope: true,
+              source: true,
+            })) {
+              if (msg.source) {
+                await this.processRawMessage(msg.source, cfg.user);
+              }
             }
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            logger.error(`Live fetch error for ${cfg.user}: ${msg}`);
           }
-        } catch (err) {
-          logger.error(`Live fetch error for ${cfg.user}: ${err}`);
-        }
-      });
+        });
 
-      this.clients.push(client);
-      logger.info(`IMAP connected & listening: ${cfg.user}`);
+        this.clients.push(client);
+        logger.info(`IMAP connected & listening: ${cfg.user}`);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        logger.error(`Failed to start IMAP client for ${cfg.user}: ${msg}`);
+      }
     }
   }
 
@@ -78,7 +83,6 @@ export class ImapClientManager {
     try {
       const parsed = await simpleParser(raw);
 
-      // Safely extract .text from AddressObject or AddressObject[]
       const getTextAddress = (addr?: AddressObject | AddressObject[] | null): string => {
         if (!addr) return '';
         if (Array.isArray(addr)) {
@@ -138,7 +142,8 @@ export class ImapClientManager {
 
       logger.info(`Processed email "${subjectContent}" → category: ${category}`);
     } catch (err) {
-      logger.error(`Error processing email: ${err}`);
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error(`Error processing email: ${msg}`);
     }
   }
 
@@ -147,9 +152,9 @@ export class ImapClientManager {
       try {
         await client.logout();
       } catch (err) {
-        logger.warn(`Error disconnecting IMAP client: ${err}`);
+        const msg = err instanceof Error ? err.message : String(err);
+        logger.warn(`Error disconnecting IMAP client: ${msg}`);
       }
     }
   }
 }
-

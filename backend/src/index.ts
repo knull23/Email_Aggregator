@@ -46,7 +46,10 @@ const imapManager = new ImapClientManager(accountConfigs);
 imapManager
   .start()
   .then(() => logger.info('IMAP Manager started'))
-  .catch((err) => logger.error('IMAP Manager failed to start:', err));
+  .catch((err) => {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error('IMAP Manager failed to start:', msg);
+  });
 
 // Routes
 app.use('/api/emails', emailRoutes);
